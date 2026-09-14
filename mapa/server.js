@@ -226,6 +226,12 @@ app.post("/api/telemetry", (req, res) => {
     accel_total:
       numberOrNull(data.accel_total),
 
+    roll:
+      numberOrNull(data.roll),
+
+    pitch:
+      numberOrNull(data.pitch),
+
 
     // ==================================================
     // ESP-NOW link

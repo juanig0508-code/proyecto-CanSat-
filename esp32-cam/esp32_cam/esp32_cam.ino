@@ -91,13 +91,17 @@ struct __attribute__((packed)) TelemetryPacket {
   int16_t accel_z_cms2;
   int16_t accel_total_cms2;
 
+  // MPU6050 attitude (complementary filter)
+  int16_t roll_deg_x100;
+  int16_t pitch_deg_x100;
+
   // Mission state
   uint8_t mode;
 };
 
 static_assert(
-  sizeof(TelemetryPacket) == 50,
-  "TelemetryPacket must be exactly 50 bytes"
+  sizeof(TelemetryPacket) == 54,
+  "TelemetryPacket must be exactly 54 bytes"
 );
 
 
@@ -293,6 +297,18 @@ bool appendTelemetryRow(
 
   file.print(
     p.accel_total_cms2 / 100.0f,
+    2
+  );
+  file.print(",");
+
+  file.print(
+    p.roll_deg_x100 / 100.0f,
+    2
+  );
+  file.print(",");
+
+  file.print(
+    p.pitch_deg_x100 / 100.0f,
     2
   );
   file.print(",");
@@ -508,7 +524,7 @@ void setup() {
         "lat,lon,alt,speed,sat,"
         "temp,humidity,pressure,gas_kohm,"
         "accel_x_ms2,accel_y_ms2,accel_z_ms2,"
-        "accel_total_ms2,mode"
+        "accel_total_ms2,roll_deg,pitch_deg,mode"
       );
 
       file.close();
@@ -700,6 +716,20 @@ void processTelemetryPayload(
   Serial.print("Accel total m/s2: ");
   Serial.println(
     telemetryPacket.accel_total_cms2 /
+    100.0f,
+    2
+  );
+
+  Serial.print("Roll deg: ");
+  Serial.println(
+    telemetryPacket.roll_deg_x100 /
+    100.0f,
+    2
+  );
+
+  Serial.print("Pitch deg: ");
+  Serial.println(
+    telemetryPacket.pitch_deg_x100 /
     100.0f,
     2
   );
