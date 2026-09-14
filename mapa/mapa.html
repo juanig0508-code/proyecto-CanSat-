@@ -30,6 +30,9 @@
     .status { display: inline-block; padding: 4px 8px; border: 1px solid #444; border-radius: 4px; font-size: 12px; }
     #connection { color: #facc15; }
 
+    .horizon-wrap { display: flex; justify-content: center; margin-bottom: 8px; }
+    #horizonCanvas { border-radius: 50%; border: 1px solid #333; background: #000; }
+
     .menu {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -185,6 +188,17 @@
       </div>
 
       <div class="section">
+        <h4 class="title">ATTITUDE</h4>
+        <div class="horizon-wrap">
+          <canvas id="horizonCanvas" width="200" height="200"></canvas>
+        </div>
+        <div class="grid">
+          <div class="card"><p>Roll (deg)</p><span id="roll">--</span></div>
+          <div class="card"><p>Pitch (deg)</p><span id="pitch">--</span></div>
+        </div>
+      </div>
+
+      <div class="section">
         <h4 class="title">GROUND RECEIPT TIME</h4>
         <div class="grid">
           <div class="card"><p>Date</p><span id="date">--</span></div>
@@ -295,6 +309,80 @@
       return String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
     }
 
+    // ==================================================
+    // Artificial horizon (roll/pitch attitude widget)
+    // ==================================================
+
+    const horizonCanvas = document.getElementById("horizonCanvas");
+    const horizonCtx = horizonCanvas ? horizonCanvas.getContext("2d") : null;
+    const HORIZON_PX_PER_DEG = 3; // vertical shift of the horizon per pitch degree
+
+    function drawArtificialHorizon(rollDeg, pitchDeg) {
+      if (!horizonCtx) return;
+
+      const w = horizonCanvas.width;
+      const h = horizonCanvas.height;
+      const cx = w / 2;
+      const cy = h / 2;
+      const radius = cx - 2;
+
+      const roll = Number.isFinite(Number(rollDeg)) ? Number(rollDeg) : 0;
+      const pitch = Number.isFinite(Number(pitchDeg)) ? Number(pitchDeg) : 0;
+      const pitchOffsetPx = Math.max(-radius, Math.min(radius, pitch * HORIZON_PX_PER_DEG));
+
+      horizonCtx.clearRect(0, 0, w, h);
+
+      horizonCtx.save();
+      horizonCtx.beginPath();
+      horizonCtx.arc(cx, cy, radius, 0, Math.PI * 2);
+      horizonCtx.clip();
+
+      horizonCtx.translate(cx, cy);
+      horizonCtx.rotate(-roll * Math.PI / 180);
+      horizonCtx.translate(0, pitchOffsetPx);
+
+      const bigSize = (w + h) * 2;
+
+      horizonCtx.fillStyle = "#4a90d9"; // sky
+      horizonCtx.fillRect(-bigSize / 2, -bigSize, bigSize, bigSize);
+
+      horizonCtx.fillStyle = "#8b5a2b"; // ground
+      horizonCtx.fillRect(-bigSize / 2, 0, bigSize, bigSize);
+
+      horizonCtx.strokeStyle = "#ffffff";
+      horizonCtx.lineWidth = 2;
+      horizonCtx.beginPath();
+      horizonCtx.moveTo(-bigSize / 2, 0);
+      horizonCtx.lineTo(bigSize / 2, 0);
+      horizonCtx.stroke();
+
+      horizonCtx.restore();
+
+      // Fixed aircraft silhouette, overlaid on top of the rotating horizon.
+      horizonCtx.strokeStyle = "#ffcc00";
+      horizonCtx.fillStyle = "#ffcc00";
+      horizonCtx.lineWidth = 3;
+
+      horizonCtx.beginPath();
+      horizonCtx.moveTo(cx - 45, cy);
+      horizonCtx.lineTo(cx - 12, cy);
+      horizonCtx.moveTo(cx + 12, cy);
+      horizonCtx.lineTo(cx + 45, cy);
+      horizonCtx.moveTo(cx, cy);
+      horizonCtx.lineTo(cx, cy - 10);
+      horizonCtx.stroke();
+
+      horizonCtx.beginPath();
+      horizonCtx.arc(cx, cy, 4, 0, Math.PI * 2);
+      horizonCtx.fill();
+
+      horizonCtx.strokeStyle = "#222";
+      horizonCtx.lineWidth = 3;
+      horizonCtx.beginPath();
+      horizonCtx.arc(cx, cy, radius, 0, Math.PI * 2);
+      horizonCtx.stroke();
+    }
+
     function validGps(lat, lon) {
       const a = Number(lat);
       const b = Number(lon);
@@ -367,6 +455,10 @@
       setText("accel_y", data.accel_y, 2);
       setText("accel_z", data.accel_z, 2);
       setText("accel_total", data.accel_total, 2);
+
+      setText("roll", data.roll, 2);
+      setText("pitch", data.pitch, 2);
+      drawArtificialHorizon(data.roll, data.pitch);
 
       setText("date", data.date);
       setText("time", data.time);
@@ -628,6 +720,7 @@
       else map.invalidateSize();
     });
 
+    drawArtificialHorizon(0, 0);
     loadHistory().then(startLatestLoop);
   </script>
 </body>

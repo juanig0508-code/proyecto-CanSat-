@@ -58,13 +58,17 @@ struct __attribute__((packed)) TelemetryPacket {
   int16_t accel_z_cms2;       // cm/s^2
   int16_t accel_total_cms2;   // cm/s^2
 
+  // MPU6050 attitude (complementary filter)
+  int16_t roll_deg_x100;      // deg x100
+  int16_t pitch_deg_x100;     // deg x100
+
   // Mission state
   uint8_t mode;
 };
 
 static_assert(
-  sizeof(TelemetryPacket) == 50,
-  "TelemetryPacket must be exactly 50 bytes"
+  sizeof(TelemetryPacket) == 54,
+  "TelemetryPacket must be exactly 54 bytes"
 );
 
 
@@ -865,6 +869,24 @@ void processReceivedFrame(
   );
 
   Serial.print(
+    "Roll deg: "
+  );
+  Serial.println(
+    packet.roll_deg_x100 /
+    100.0f,
+    2
+  );
+
+  Serial.print(
+    "Pitch deg: "
+  );
+  Serial.println(
+    packet.pitch_deg_x100 /
+    100.0f,
+    2
+  );
+
+  Serial.print(
     "Mission mode: "
   );
   Serial.print(
@@ -1019,6 +1041,24 @@ bool sendTelemetryToServer(
     "\"accel_total\":" +
     String(
       packet.accel_total_cms2 /
+      100.0f,
+      2
+    ) +
+    ",";
+
+  json +=
+    "\"roll\":" +
+    String(
+      packet.roll_deg_x100 /
+      100.0f,
+      2
+    ) +
+    ",";
+
+  json +=
+    "\"pitch\":" +
+    String(
+      packet.pitch_deg_x100 /
       100.0f,
       2
     ) +
