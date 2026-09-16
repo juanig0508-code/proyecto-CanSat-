@@ -1,11 +1,107 @@
+
 const express = require("express");
 const path = require("path");
+const Database = require("better-sqlite3");
 
 const app = express();
-
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
+// ======================================================
+// DATABASE
+// ======================================================
+
+const db = new Database("hermes.db");
+
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS telemetry (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    counter INTEGER,
+    time_ms INTEGER,
+    mode INTEGER,
+
+    lat REAL,
+    lon REAL,
+    alt REAL,
+    speed REAL,
+    sat INTEGER,
+
+    temp REAL,
+    humidity REAL,
+    pressure REAL,
+    gas_kohm REAL,
+
+    accel_x REAL,
+    accel_y REAL,
+    accel_z REAL,
+    accel_total REAL,
+
+    espnow_rssi INTEGER,
+
+    date TEXT,
+    time TEXT,
+    received_at TEXT
+  )
+`).run();
+
+
+const insertTelemetry = db.prepare(`
+  INSERT INTO telemetry (
+    counter,
+    time_ms,
+    mode,
+
+    lat,
+    lon,
+    alt,
+    speed,
+    sat,
+
+    temp,
+    humidity,
+    pressure,
+    gas_kohm,
+
+    accel_x,
+    accel_y,
+    accel_z,
+    accel_total,
+
+    espnow_rssi,
+
+    date,
+    time,
+    received_at
+  )
+  VALUES (
+    @counter,
+    @time_ms,
+    @mode,
+
+    @lat,
+    @lon,
+    @alt,
+    @speed,
+    @sat,
+
+    @temp,
+    @humidity,
+    @pressure,
+    @gas_kohm,
+
+    @accel_x,
+    @accel_y,
+    @accel_z,
+    @accel_total,
+
+    @espnow_rssi,
+
+    @date,
+    @time,
+    @received_at
+  )
+`);
 // Avoid cached API responses while the dashboard is running live.
 app.use((req, res, next) => {
   if (req.path.startsWith("/api/")) {
@@ -23,8 +119,14 @@ app.use((req, res, next) => {
 // 25 minutos de telemetría.
 const MAX_HISTORY = 2000;
 
-let telemetryHistory = [];
+let telemetryHistory = db.prepare(`
+  SELECT *
+  FROM telemetry
+  ORDER BY id DESC
+  LIMIT ?
+`).all(MAX_HISTORY);
 
+telemetryHistory.reverse();
 // Long-poll clients waiting for the next telemetry packet.
 // This lets the dashboard update as soon as a packet arrives instead of
 // waiting for the next fixed polling interval.
@@ -112,7 +214,28 @@ function notifyLatestClients(entry) {
 // ======================================================
 
 app.get("/api/telemetry", (req, res) => {
-  res.json(telemetryHistory);
+
+  try {
+
+    const rows = db.prepare(`
+      SELECT *
+      FROM telemetry
+      ORDER BY id ASC
+    `).all();
+
+    res.json(rows);
+
+  } catch (err) {
+
+    console.error("Database read error:", err);
+
+    res.status(500).json({
+      ok: false,
+      error: "Could not read telemetry database"
+    });
+
+  }
+
 });
 
 
@@ -262,7 +385,21 @@ app.post("/api/telemetry", (req, res) => {
     });
 
   }
+  // Store permanently in SQLite
+  try {
 
+    insertTelemetry.run(entry);
+
+  } catch (err) {
+
+    console.error("Database error:", err);
+
+    return res.status(500).json({
+      ok: false,
+      error: "Could not store telemetry in database"
+    });
+
+  }
 
   // ====================================================
   // Store telemetry
@@ -305,6 +442,126 @@ app.post("/api/telemetry", (req, res) => {
 
 });
 
+
+// ======================================================
+// DOWNLOAD TELEMETRY CSV
+// ======================================================
+
+app.get("/api/download.csv", (req, res) => {
+
+  try {
+
+    const rows = db.prepare(`
+      SELECT
+        counter,
+        time_ms,
+        mode,
+
+        lat,
+        lon,
+        alt,
+        speed,
+        sat,
+
+        temp,
+        humidity,
+        pressure,
+        gas_kohm,
+
+        accel_x,
+        accel_y,
+        accel_z,
+        accel_total,
+
+        espnow_rssi,
+
+        date,
+        time,
+        received_at
+
+      FROM telemetry
+      ORDER BY id ASC
+    `).all();
+
+
+    if (rows.length === 0) {
+
+      return res.status(404).send(
+        "No telemetry data available"
+      );
+
+    }
+
+
+    function escapeCsv(value) {
+
+      if (value === null || value === undefined) {
+        return "";
+      }
+
+      const text = String(value);
+
+      if (
+        text.includes(",") ||
+        text.includes('"') ||
+        text.includes("\n")
+      ) {
+
+        return `"${text.replace(/"/g, '""')}"`;
+
+      }
+
+      return text;
+    }
+
+
+    const headers = Object.keys(rows[0]);
+
+    const csv = [
+      headers.join(","),
+
+      ...rows.map(row =>
+        headers
+          .map(header => escapeCsv(row[header]))
+          .join(",")
+      )
+
+    ].join("\n");
+
+
+    const now = new Date();
+
+    const fileDate =
+      now.toISOString().split("T")[0];
+
+    const fileName =
+      `hermes_telemetry_${fileDate}.csv`;
+
+
+    res.setHeader(
+      "Content-Type",
+      "text/csv; charset=utf-8"
+    );
+
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${fileName}"`
+    );
+
+    res.send(csv);
+
+  } catch (err) {
+
+    console.error("CSV export error:", err);
+
+    res.status(500).json({
+      ok: false,
+      error: "Could not generate CSV"
+    });
+
+  }
+
+});
 
 // ======================================================
 // ROOT PAGE

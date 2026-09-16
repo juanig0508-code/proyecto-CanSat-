@@ -32,12 +32,13 @@
 
     .menu {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(3, 1fr);
       gap: 8px;
       margin-bottom: 14px;
     }
 
-    .menu button {
+    .menu button,
+    .menu .menu-button {
       cursor: pointer;
       background: #000;
       color: #aaa;
@@ -47,11 +48,18 @@
       font-family: monospace;
       font-size: 12px;
       letter-spacing: 0.5px;
-    }
 
-    .menu button.active {
-      color: #00ff88;
-      border-color: #00ff88;
+      text-decoration: none;
+      text-align: center;
+
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .menu button:hover,
+    .menu .menu-button:hover {
+      color: #7dd3fc;
+      border-color: #7dd3fc;
     }
 
     #historyView {
@@ -137,6 +145,12 @@
       <div class="menu">
         <button id="instantBtn" class="active" type="button">INSTANT DATA</button>
         <button id="historyBtn" type="button">HISTORICAL</button>
+            <a
+      href="/api/download.csv"
+      class="menu-button"
+    >
+      DOWNLOAD CSV
+    </a>
       </div>
 
       <div class="section">
