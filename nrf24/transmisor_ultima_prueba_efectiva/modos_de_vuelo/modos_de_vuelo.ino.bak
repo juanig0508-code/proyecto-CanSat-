@@ -46,15 +46,12 @@ struct __attribute__((packed)) TelemetryPacket {
   int16_t accel_z_cms2;
   int16_t accel_total_cms2;
 
-  int16_t roll_deg_x100;   // roll angle [deg] x100
-  int16_t pitch_deg_x100;  // pitch angle [deg] x100
-
   uint8_t mode;
 };
 
 static_assert(
-  sizeof(TelemetryPacket) == 54,
-  "TelemetryPacket must be exactly 54 bytes"
+  sizeof(TelemetryPacket) == 50,
+  "TelemetryPacket must be exactly 50 bytes"
 );
 
 TelemetryPacket packet;
@@ -392,7 +389,6 @@ float calculateVerticalAcceleration(float accelX, float accelY, float accelZ,
 void printNavigationFilterReport();
 
 int16_t accelToCms2(float accel_ms2);
-int16_t angleToDeg100(float angleDeg);
 
 size_t sendFramedUartPacket(const uint8_t *data, uint8_t length);
 void sendTelemetryPacket();
@@ -1233,31 +1229,6 @@ int16_t accelToCms2(float accel_ms2) {
   return (int16_t)lroundf(scaled);
 }
 
-
-// ======================================================
-// Angle conversion
-// deg -> deg x100
-// -32768 is reserved as invalid.
-// ======================================================
-
-int16_t angleToDeg100(float angleDeg) {
-  if (!isfinite(angleDeg)) {
-    return -32768;
-  }
-
-  float scaled = angleDeg * 100.0f;
-
-  if (scaled > 32767.0f) {
-    scaled = 32767.0f;
-  }
-
-  if (scaled < -32767.0f) {
-    scaled = -32767.0f;
-  }
-
-  return (int16_t)lroundf(scaled);
-}
-
 // ======================================================
 // UART frame writer
 // ======================================================
@@ -1334,9 +1305,6 @@ void sendTelemetryPacket() {
   packet.accel_z_cms2 = accelToCms2(az);
   packet.accel_total_cms2 = accelToCms2(accelTotal);
 
-  packet.roll_deg_x100 = angleToDeg100(rollDeg);
-  packet.pitch_deg_x100 = angleToDeg100(pitchDeg);
-
   packet.mode = (uint8_t)currentMode;
 
   size_t bytesSent = sendFramedUartPacket(
@@ -1391,12 +1359,6 @@ void sendTelemetryPacket() {
 
   Serial.print("Accel total cm/s^2: ");
   Serial.println(packet.accel_total_cms2);
-
-  Serial.print("Roll deg x100: ");
-  Serial.println(packet.roll_deg_x100);
-
-  Serial.print("Pitch deg x100: ");
-  Serial.println(packet.pitch_deg_x100);
 
   Serial.print("Mission mode: ");
   Serial.println(packet.mode);

@@ -37,9 +37,6 @@ db.prepare(`
     accel_z REAL,
     accel_total REAL,
 
-    roll REAL,
-    pitch REAL,
-
     espnow_rssi INTEGER,
 
     date TEXT,
@@ -47,21 +44,6 @@ db.prepare(`
     received_at TEXT
   )
 `).run();
-
-// Schema migration for databases created before roll/pitch existed.
-const telemetryColumns = new Set(
-  db.prepare("PRAGMA table_info(telemetry)")
-    .all()
-    .map(column => column.name)
-);
-
-if (!telemetryColumns.has("roll")) {
-  db.prepare("ALTER TABLE telemetry ADD COLUMN roll REAL").run();
-}
-
-if (!telemetryColumns.has("pitch")) {
-  db.prepare("ALTER TABLE telemetry ADD COLUMN pitch REAL").run();
-}
 
 
 const insertTelemetry = db.prepare(`
@@ -85,9 +67,6 @@ const insertTelemetry = db.prepare(`
     accel_y,
     accel_z,
     accel_total,
-
-    roll,
-    pitch,
 
     espnow_rssi,
 
@@ -115,9 +94,6 @@ const insertTelemetry = db.prepare(`
     @accel_y,
     @accel_z,
     @accel_total,
-
-    @roll,
-    @pitch,
 
     @espnow_rssi,
 
@@ -373,16 +349,6 @@ app.post("/api/telemetry", (req, res) => {
     accel_total:
       numberOrNull(data.accel_total),
 
-    // ==================================================
-    // MPU6050 attitude
-    // ==================================================
-
-    roll:
-      numberOrNull(data.roll),
-
-    pitch:
-      numberOrNull(data.pitch),
-
 
     // ==================================================
     // ESP-NOW link
@@ -506,9 +472,6 @@ app.get("/api/download.csv", (req, res) => {
         accel_y,
         accel_z,
         accel_total,
-
-        roll,
-        pitch,
 
         espnow_rssi,
 
