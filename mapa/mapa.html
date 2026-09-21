@@ -211,23 +211,6 @@
         </div>
       </div>
 
-      <div class="section">
-        <h4 class="title">ACCELERATION</h4>
-        <div class="grid">
-          <div class="card"><p>Accel X (m/s²)</p><span id="accel_x">--</span></div>
-          <div class="card"><p>Accel Y (m/s²)</p><span id="accel_y">--</span></div>
-          <div class="card"><p>Accel Z (m/s²)</p><span id="accel_z">--</span></div>
-          <div class="card"><p>Accel Total (m/s²)</p><span id="accel_total">--</span></div>
-        </div>
-      </div>
-
-      <div class="section">
-        <h4 class="title">GROUND RECEIPT TIME</h4>
-        <div class="grid">
-          <div class="card"><p>Date</p><span id="date">--</span></div>
-          <div class="card"><p>Time</p><span id="time">--</span></div>
-        </div>
-      </div>
     </div>
 
     <div id="main">
@@ -288,6 +271,14 @@
           <div class="card"><p>Accel Total (m/s²)</p><span id="mpu-accel-total">--</span></div>
           <div class="card"><p>Roll (deg)</p><span id="roll">--</span></div>
           <div class="card"><p>Pitch (deg)</p><span id="pitch">--</span></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h4 class="title">GROUND RECEIPT TIME</h4>
+        <div class="grid">
+          <div class="card"><p>Date</p><span id="date">--</span></div>
+          <div class="card"><p>Time</p><span id="time">--</span></div>
         </div>
       </div>
     </div>
@@ -645,11 +636,6 @@
       setText("humidity", data.humidity, 2);
       setText("pressure", data.pressure, 2);
       setText("gas_kohm", data.gas_kohm, 2);
-
-      setText("accel_x", data.accel_x, 2);
-      setText("accel_y", data.accel_y, 2);
-      setText("accel_z", data.accel_z, 2);
-      setText("accel_total", data.accel_total, 2);
 
       setText("mpu-accel-x", data.accel_x, 2);
       setText("mpu-accel-y", data.accel_y, 2);
