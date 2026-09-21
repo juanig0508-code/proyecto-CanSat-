@@ -52,6 +52,20 @@
     #horizon-panel .card p { font-size: 11px; }
     #horizon-panel .card span { font-size: 14px; }
 
+    #downloadCsvBtn {
+      cursor: pointer;
+      background: #000;
+      color: #00ff88;
+      border: 1px solid #00ff88;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-family: monospace;
+      font-size: 12px;
+      letter-spacing: 0.5px;
+    }
+
+    #downloadCsvBtn:hover { background: #00ff8822; }
+
     .menu {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -197,23 +211,6 @@
         </div>
       </div>
 
-      <div class="section">
-        <h4 class="title">ACCELERATION</h4>
-        <div class="grid">
-          <div class="card"><p>Accel X (m/s²)</p><span id="accel_x">--</span></div>
-          <div class="card"><p>Accel Y (m/s²)</p><span id="accel_y">--</span></div>
-          <div class="card"><p>Accel Z (m/s²)</p><span id="accel_z">--</span></div>
-          <div class="card"><p>Accel Total (m/s²)</p><span id="accel_total">--</span></div>
-        </div>
-      </div>
-
-      <div class="section">
-        <h4 class="title">GROUND RECEIPT TIME</h4>
-        <div class="grid">
-          <div class="card"><p>Date</p><span id="date">--</span></div>
-          <div class="card"><p>Time</p><span id="time">--</span></div>
-        </div>
-      </div>
     </div>
 
     <div id="main">
@@ -228,6 +225,7 @@
             <div>Samples: <span id="history_samples">0</span></div>
             <div>Last packet: <span id="history_last_counter">--</span></div>
           </div>
+          <button id="downloadCsvBtn" type="button">DOWNLOAD CSV</button>
         </div>
 
         <div class="chart-grid">
@@ -276,6 +274,14 @@
           <div class="card"><p>Pitch (deg)</p><span id="pitch">--</span></div>
         </div>
       </div>
+
+      <div class="section">
+        <h4 class="title">GROUND RECEIPT TIME</h4>
+        <div class="grid">
+          <div class="card"><p>Date</p><span id="date">--</span></div>
+          <div class="card"><p>Time</p><span id="time">--</span></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -301,6 +307,7 @@
     const historyBtn = document.getElementById("historyBtn");
     const mapView = document.getElementById("mapView");
     const historyView = document.getElementById("historyView");
+    const downloadCsvBtn = document.getElementById("downloadCsvBtn");
 
     function setText(id, value, digits = null) {
       const el = document.getElementById(id);
@@ -610,6 +617,41 @@
       document.getElementById("history_last_counter").innerText = last ? last.counter : "--";
     }
 
+    const CSV_COLUMNS = [
+      "counter", "time_ms", "mode",
+      "lat", "lon", "alt", "speed", "sat",
+      "temp", "humidity", "pressure", "gas_kohm",
+      "accel_x", "accel_y", "accel_z", "accel_total",
+      "roll", "pitch",
+      "espnow_rssi", "date", "time"
+    ];
+
+    function downloadTelemetryCsv() {
+      if (telemetryHistory.length === 0) return;
+
+      const rows = [CSV_COLUMNS.join(",")];
+
+      telemetryHistory.forEach(sample => {
+        const row = CSV_COLUMNS.map(key => {
+          const value = sample[key];
+          return value === null || value === undefined ? "" : value;
+        });
+        rows.push(row.join(","));
+      });
+
+      const blob = new Blob([rows.join("\n")], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "hermes_telemetry_" + Date.now() + ".csv";
+      link.click();
+
+      URL.revokeObjectURL(url);
+    }
+
+    downloadCsvBtn.addEventListener("click", downloadTelemetryCsv);
+
     function showTelemetry(data) {
       if (!data) return;
 
@@ -630,11 +672,6 @@
       setText("humidity", data.humidity, 2);
       setText("pressure", data.pressure, 2);
       setText("gas_kohm", data.gas_kohm, 2);
-
-      setText("accel_x", data.accel_x, 2);
-      setText("accel_y", data.accel_y, 2);
-      setText("accel_z", data.accel_z, 2);
-      setText("accel_total", data.accel_total, 2);
 
       setText("mpu-accel-x", data.accel_x, 2);
       setText("mpu-accel-y", data.accel_y, 2);
