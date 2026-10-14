@@ -6,7 +6,8 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.22.1"
+    "express": "^4.22.1",
+    "serialport": "^13.0.0"
   },
   "description": "",
   "keywords": [],
