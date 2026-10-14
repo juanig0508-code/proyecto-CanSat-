@@ -1,5 +1,6 @@
 const express = require("express");
 const path = require("path");
+const { SerialPort, ReadlineParser } = require("serialport");
 
 const app = express();
 
@@ -145,12 +146,15 @@ app.get("/api/latest", (req, res) => {
 
 
 // ======================================================
-// POST TELEMETRY
+// STORE ONE TELEMETRY SAMPLE
+//
+// Shared by both ingestion paths: the HTTP POST route below
+// (kept for manual testing, e.g. with curl) and the USB serial
+// reader further down, which is the normal offline path.
 // ======================================================
 
-app.post("/api/telemetry", (req, res) => {
+function storeTelemetry(data) {
 
-  const data = req.body;
   const now = new Date();
   const utcMinus3 = new Date(now.getTime() - 3 * 60 * 60 * 1000);
 
@@ -261,12 +265,7 @@ app.post("/api/telemetry", (req, res) => {
   // ====================================================
 
   if (entry.counter === null) {
-
-    return res.status(400).json({
-      ok: false,
-      error: "Missing or invalid counter"
-    });
-
+    return null;
   }
 
 
@@ -298,10 +297,24 @@ app.post("/api/telemetry", (req, res) => {
     `RSSI=${entry.espnow_rssi} dBm`
   );
 
+  return entry;
+}
 
-  // ====================================================
-  // Response to ground ESP32
-  // ====================================================
+
+// ======================================================
+// POST TELEMETRY (manual/remote testing only)
+// ======================================================
+
+app.post("/api/telemetry", (req, res) => {
+
+  const entry = storeTelemetry(req.body);
+
+  if (!entry) {
+    return res.status(400).json({
+      ok: false,
+      error: "Missing or invalid counter"
+    });
+  }
 
   res.status(200).json({
     ok: true,
@@ -326,6 +339,100 @@ app.get("/", (req, res) => {
   );
 
 });
+
+
+// ======================================================
+// USB SERIAL TELEMETRY (offline ground station)
+//
+// The ground ESP32 no longer connects to WiFi. It prints one
+// line per packet over USB, "TLM:{...json...}", mixed in with
+// human-readable debug text on the same port. This listens on
+// that port, picks out only the TLM: lines, and feeds them into
+// the same storeTelemetry() used by the HTTP route.
+// ======================================================
+
+const SERIAL_BAUD_RATE = 115200;
+const SERIAL_RETRY_MS = 3000;
+const TLM_PREFIX = "TLM:";
+
+function handleSerialLine(line) {
+  const trimmed = line.trim();
+
+  if (!trimmed.startsWith(TLM_PREFIX)) {
+    // Human-readable debug output from the ESP32 (stats, boot
+    // banner, per-packet printout) -- not telemetry, ignore it.
+    return;
+  }
+
+  let data;
+
+  try {
+    data = JSON.parse(trimmed.slice(TLM_PREFIX.length));
+  } catch (err) {
+    console.error("Malformed TLM line from ESP32:", err.message);
+    return;
+  }
+
+  if (!storeTelemetry(data)) {
+    console.error("TLM line missing a valid counter, dropped");
+  }
+}
+
+async function findSerialPort() {
+  if (process.env.SERIAL_PORT) {
+    return process.env.SERIAL_PORT;
+  }
+
+  const ports = await SerialPort.list();
+
+  // Prefer the USB-serial chips most ESP32 dev boards use.
+  const knownChip = /cp210|ch340|ch910|ftdi|silicon labs|wch/i;
+
+  const preferred = ports.find(p =>
+    knownChip.test(`${p.manufacturer || ""} ${p.vendorId || ""}`)
+  );
+
+  const chosen = preferred || ports[0];
+
+  return chosen ? chosen.path : null;
+}
+
+async function connectSerial() {
+  const portPath = await findSerialPort();
+
+  if (!portPath) {
+    console.log(
+      `No serial port found. Retrying in ${SERIAL_RETRY_MS / 1000}s... ` +
+      `(plug in the ground ESP32, or set SERIAL_PORT to force one)`
+    );
+
+    setTimeout(connectSerial, SERIAL_RETRY_MS);
+    return;
+  }
+
+  console.log(`Opening serial port ${portPath} @ ${SERIAL_BAUD_RATE} baud`);
+
+  const port = new SerialPort(
+    { path: portPath, baudRate: SERIAL_BAUD_RATE },
+    (err) => {
+      if (err) {
+        console.error(`Could not open ${portPath}: ${err.message}`);
+        setTimeout(connectSerial, SERIAL_RETRY_MS);
+      }
+    }
+  );
+
+  port.pipe(new ReadlineParser({ delimiter: "\n" })).on("data", handleSerialLine);
+
+  port.on("close", () => {
+    console.log(`Serial port closed. Reconnecting in ${SERIAL_RETRY_MS / 1000}s...`);
+    setTimeout(connectSerial, SERIAL_RETRY_MS);
+  });
+
+  port.on("error", (err) => {
+    console.error(`Serial port error: ${err.message}`);
+  });
+}
 
 
 // ======================================================
@@ -360,5 +467,7 @@ app.listen(PORT, () => {
   console.log(
     "======================================"
   );
+
+  connectSerial();
 
 });

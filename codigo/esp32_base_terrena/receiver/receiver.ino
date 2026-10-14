@@ -1,28 +1,22 @@
 #include <WiFi.h>
-
-// ============================================================#include <WiFi.h>
-#include <HTTPClient.h>
-#include <WiFiClientSecure.h>
+#include <esp_wifi.h>
 #include <esp_now.h>
 #include <esp_idf_version.h>
 
 // ============================================================
-// WiFi + backend
+// Offline ground station.
+//
+// No WiFi access point and no internet connection are used.
+// The WiFi radio is only switched on, in station mode, to fix
+// its channel for ESP-NOW (same trick the ESP32-CAM already
+// uses) -- it never associates to a network. Telemetry is
+// printed over USB serial for a local PC app to read.
 // ============================================================
-
-const char* ssid = "LaboPLC";
-const char* password = "link1982";
-
-const char* serverUrl =
-  "https://cansat1.onrender.com/api/telemetry";
-
 
 // ============================================================
 // ESP-NOW
 //
 // Must match the ESP32-CAM channel.
-// Because this ESP32 also connects to WiFi, the access point
-// must use the same channel as the ESP32-CAM.
 // ============================================================
 
 #define ESPNOW_CHANNEL 1
@@ -103,8 +97,7 @@ volatile uint32_t queueDrops = 0;
 uint32_t telemetryReceived = 0;
 uint32_t invalidReceived = 0;
 
-uint32_t httpOk = 0;
-uint32_t httpErrors = 0;
+uint32_t serialSent = 0;
 
 uint32_t missingPackets = 0;
 uint32_t duplicatePackets = 0;
@@ -118,15 +111,14 @@ bool hasLastCounter = false;
 // Function declarations
 // ============================================================
 
-void connectWiFi();
+void initRadioChannel();
 bool initEspNow();
-void checkRadioChannel();
 
 void processReceivedFrame(
   const ReceivedFrame &frame
 );
 
-bool sendTelemetryToServer(
+void sendTelemetryToSerial(
   const TelemetryPacket &packet,
   int8_t espNowRssi
 );
@@ -354,7 +346,7 @@ void setup() {
     "Hermes ground station"
   );
   Serial.println(
-    "ESP-NOW unified telemetry -> HTTPS backend"
+    "ESP-NOW unified telemetry -> USB serial (offline, no WiFi)"
   );
   Serial.println(
     "=========================================="
@@ -376,10 +368,7 @@ void setup() {
     }
   }
 
-  // WiFi connection fixes the ESP32 radio to the AP channel.
-  connectWiFi();
-
-  checkRadioChannel();
+  initRadioChannel();
 
   if (!initEspNow()) {
     Serial.println(
@@ -484,29 +473,14 @@ void loop() {
     );
 
     Serial.print(
-      "HTTP OK:             "
+      "Serial TLM sent:     "
     );
     Serial.println(
-      httpOk
+      serialSent
     );
 
     Serial.print(
-      "HTTP errors:         "
-    );
-    Serial.println(
-      httpErrors
-    );
-
-    Serial.print(
-      "WiFi RSSI:           "
-    );
-    Serial.print(
-      WiFi.RSSI()
-    );
-    Serial.println(" dBm");
-
-    Serial.print(
-      "WiFi channel:        "
+      "ESP-NOW channel:     "
     );
     Serial.println(
       WiFi.channel()
@@ -522,119 +496,36 @@ void loop() {
 
 
 // ============================================================
-// WiFi
+// Radio channel
+//
+// No access point involved: the WiFi radio is switched to
+// station mode only so its channel can be pinned directly,
+// exactly like the ESP32-CAM does on its side.
 // ============================================================
 
-void connectWiFi() {
+void initRadioChannel() {
   WiFi.mode(WIFI_STA);
-  WiFi.setSleep(false);
+  WiFi.disconnect();
 
-  Serial.print(
-    "Connecting to WiFi: "
-  );
-  Serial.println(
-    ssid
-  );
+  esp_err_t result =
+    esp_wifi_set_channel(
+      ESPNOW_CHANNEL,
+      WIFI_SECOND_CHAN_NONE
+    );
 
-  WiFi.begin(
-    ssid,
-    password
-  );
-
-  uint32_t started =
-    millis();
-
-  while (
-    WiFi.status() != WL_CONNECTED
-  ) {
-    delay(500);
-    Serial.print(".");
-
-    if (
-      millis() - started > 20000
-    ) {
-      Serial.println();
-      Serial.println(
-        "Still waiting for WiFi..."
-      );
-
-      started =
-        millis();
-    }
+  if (result != ESP_OK) {
+    Serial.print(
+      "Failed to set ESP-NOW channel: "
+    );
+    Serial.println(result);
   }
 
-  Serial.println();
-  Serial.println(
-    "WiFi connected"
-  );
-
   Serial.print(
-    "IP address: "
-  );
-  Serial.println(
-    WiFi.localIP()
-  );
-
-  Serial.print(
-    "WiFi channel: "
+    "ESP-NOW channel set to "
   );
   Serial.println(
     WiFi.channel()
   );
-}
-
-
-// ============================================================
-// WiFi / ESP-NOW channel check
-// ============================================================
-
-void checkRadioChannel() {
-  uint8_t currentChannel =
-    WiFi.channel();
-
-  if (
-    currentChannel != ESPNOW_CHANNEL
-  ) {
-    Serial.println();
-    Serial.println(
-      "**************************************************"
-    );
-    Serial.println(
-      "WARNING: ESP-NOW / WiFi CHANNEL MISMATCH"
-    );
-
-    Serial.print(
-      "ESP32-CAM channel: "
-    );
-    Serial.println(
-      ESPNOW_CHANNEL
-    );
-
-    Serial.print(
-      "Ground WiFi channel: "
-    );
-    Serial.println(
-      currentChannel
-    );
-
-    Serial.println(
-      "The access point and ESP32-CAM must use"
-    );
-    Serial.println(
-      "the same WiFi channel for ESP-NOW to work."
-    );
-
-    Serial.println(
-      "**************************************************"
-    );
-    Serial.println();
-  }
-
-  else {
-    Serial.println(
-      "ESP-NOW/WiFi channel OK"
-    );
-  }
 }
 
 
@@ -900,56 +791,29 @@ void processReceivedFrame(
   );
   Serial.println(")");
 
-  bool ok =
-    sendTelemetryToServer(
-      packet,
-      frame.rssi
-    );
+  sendTelemetryToSerial(
+    packet,
+    frame.rssi
+  );
 
-  if (ok) {
-    httpOk++;
-  }
-
-  else {
-    httpErrors++;
-  }
+  serialSent++;
 }
 
 
 // ============================================================
-// HTTPS POST
+// USB serial telemetry line
 //
 // Binary telemetry uses compact acceleration values in cm/s^2.
-// JSON converts them back to m/s^2 for easier backend/dashboard
-// interpretation.
+// JSON converts them back to m/s^2 for easier local-app
+// interpretation. Each line is prefixed with "TLM:" so the PC
+// app can tell it apart from the human-readable debug prints
+// above sharing the same serial port.
 // ============================================================
 
-bool sendTelemetryToServer(
+void sendTelemetryToSerial(
   const TelemetryPacket &packet,
   int8_t espNowRssi
 ) {
-  if (
-    WiFi.status() != WL_CONNECTED
-  ) {
-    Serial.println(
-      "WiFi disconnected. Reconnecting..."
-    );
-
-    connectWiFi();
-
-    checkRadioChannel();
-
-    if (
-      WiFi.status() != WL_CONNECTED
-    ) {
-      Serial.println(
-        "Could not reconnect to WiFi"
-      );
-
-      return false;
-    }
-  }
-
   String json;
   json.reserve(512);
 
@@ -1075,96 +939,6 @@ bool sendTelemetryToServer(
 
   json += "}";
 
-
-  WiFiClientSecure client;
-
-  // Current prototype uses HTTPS without CA validation.
-  client.setInsecure();
-
-
-  HTTPClient http;
-
-  http.setTimeout(5000);
-
-
-  if (
-    !http.begin(
-      client,
-      serverUrl
-    )
-  ) {
-    Serial.println(
-      "HTTP begin failed"
-    );
-
-    return false;
-  }
-
-
-  http.addHeader(
-    "Content-Type",
-    "application/json"
-  );
-
-
-  Serial.print(
-    "POST counter="
-  );
-  Serial.println(
-    packet.counter
-  );
-
-
-  int httpCode =
-    http.POST(
-      json
-    );
-
-
-  Serial.print(
-    "HTTP response: "
-  );
-  Serial.println(
-    httpCode
-  );
-
-
-  bool ok =
-    (
-      httpCode >= 200 &&
-      httpCode < 300
-    );
-
-
-  if (httpCode > 0) {
-    String response =
-      http.getString();
-
-    if (
-      response.length() > 0
-    ) {
-      Serial.print(
-        "Server: "
-      );
-      Serial.println(
-        response
-      );
-    }
-  }
-
-  else {
-    Serial.print(
-      "HTTP error: "
-    );
-    Serial.println(
-      http.errorToString(
-        httpCode
-      )
-    );
-  }
-
-
-  http.end();
-
-  return ok;
+  Serial.print("TLM:");
+  Serial.println(json);
 }
