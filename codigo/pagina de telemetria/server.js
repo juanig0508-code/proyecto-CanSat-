@@ -360,7 +360,11 @@ function handleSerialLine(line) {
 
   if (!trimmed.startsWith(TLM_PREFIX)) {
     // Human-readable debug output from the ESP32 (stats, boot
-    // banner, per-packet printout) -- not telemetry, ignore it.
+    // banner, per-packet printout) -- not telemetry, just echo it
+    // so it stays visible even though node now owns the port.
+    if (trimmed.length > 0) {
+      console.log(`[ESP32] ${trimmed}`);
+    }
     return;
   }
 
